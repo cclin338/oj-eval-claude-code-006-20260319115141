@@ -169,9 +169,8 @@ std::pair<int, int> findRandomUnknown() {
  * @return Coordinates of cell with lowest mine probability
  */
 std::pair<int, int> findBestGuess() {
-  // Simple probability calculation:
-  // For cells adjacent to numbers, use local information
-  // For isolated cells, use global mine density
+  // Simple heuristic: cells with more visited neighbors are safer
+  // Also consider global mine density
 
   int remaining_mines = total_mines - marked_mines;
   int remaining_unknown = unknown_cells;
@@ -184,7 +183,7 @@ std::pair<int, int> findBestGuess() {
   float global_probability = (float)remaining_mines / remaining_unknown;
 
   std::pair<int, int> best_cell = {-1, -1};
-  float best_probability = 2.0f; // Start with probability > 1
+  float best_score = -1.0f; // Higher score is better (lower risk)
 
   const int dx[] = {-1, -1, -1, 0, 0, 1, 1, 1};
   const int dy[] = {-1, 0, 1, -1, 1, -1, 0, 1};
@@ -192,56 +191,47 @@ std::pair<int, int> findBestGuess() {
   for (int i = 0; i < rows; i++) {
     for (int j = 0; j < columns; j++) {
       if (known_map[i][j] == '?' && !is_marked[i][j]) {
-        float cell_probability = global_probability;
+        // Count visited neighbors
+        int visited_neighbors = 0;
+        int total_neighbors = 0;
 
-        // Check if cell is adjacent to any visited cells
+        for (int d = 0; d < 8; d++) {
+          int ni = i + dx[d];
+          int nj = j + dy[d];
+          if (ni >= 0 && ni < rows && nj >= 0 && nj < columns) {
+            total_neighbors++;
+            if (known_map[ni][nj] >= '0' && known_map[ni][nj] <= '8') {
+              visited_neighbors++;
+            }
+          }
+        }
+
+        // Simple scoring: more visited neighbors = safer
+        // Also consider cells adjacent to numbers (they give information)
+        float neighbor_score = (total_neighbors > 0) ? (float)visited_neighbors / total_neighbors : 0;
+
+        // Bonus for being adjacent to numbers (they constrain probabilities)
         bool adjacent_to_number = false;
-        float local_prob_sum = 0.0f;
-        int local_constraints = 0;
-
         for (int d = 0; d < 8; d++) {
           int ni = i + dx[d];
           int nj = j + dy[d];
           if (ni >= 0 && ni < rows && nj >= 0 && nj < columns) {
             if (known_map[ni][nj] >= '1' && known_map[ni][nj] <= '8') {
               adjacent_to_number = true;
-
-              int number = known_map[ni][nj] - '0';
-
-              // Count unknown and marked neighbors of this number cell
-              int unknown_around = 0;
-              int marked_around = 0;
-
-              for (int dd = 0; dd < 8; dd++) {
-                int nni = ni + dx[dd];
-                int nnj = nj + dy[dd];
-                if (nni >= 0 && nni < rows && nnj >= 0 && nnj < columns) {
-                  if (known_map[nni][nnj] == '?') {
-                    unknown_around++;
-                  } else if (known_map[nni][nnj] == '@') {
-                    marked_around++;
-                  }
-                }
-              }
-
-              // Calculate local probability for this constraint
-              int remaining_mines_for_cell = number - marked_around;
-              if (remaining_mines_for_cell > 0 && unknown_around > 0) {
-                local_prob_sum += (float)remaining_mines_for_cell / unknown_around;
-                local_constraints++;
-              }
+              break;
             }
           }
         }
 
-        // If cell is adjacent to numbers, use average of local probabilities
-        if (adjacent_to_number && local_constraints > 0) {
-          cell_probability = local_prob_sum / local_constraints;
-        }
+        float info_bonus = adjacent_to_number ? 0.1f : 0.0f;
 
-        // Prefer cells with lower probability
-        if (cell_probability < best_probability) {
-          best_probability = cell_probability;
+        // Final score: combination of neighbor safety and info bonus
+        // Lower global probability also increases score
+        float score = neighbor_score + info_bonus + (1.0f - global_probability) * 0.05f;
+
+        // Prefer cells with higher score (safer)
+        if (score > best_score) {
+          best_score = score;
           best_cell = {i, j};
         }
       }
