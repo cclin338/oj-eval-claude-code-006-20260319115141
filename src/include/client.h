@@ -165,6 +165,98 @@ std::pair<int, int> findRandomUnknown() {
 }
 
 /**
+ * @brief Calculate probability of being a mine for each unknown cell
+ * @return Coordinates of cell with lowest mine probability
+ */
+std::pair<int, int> findBestGuess() {
+  // Simple probability calculation:
+  // For cells adjacent to numbers, use local information
+  // For isolated cells, use global mine density
+
+  int remaining_mines = total_mines - marked_mines;
+  int remaining_unknown = unknown_cells;
+
+  // If no remaining mines or unknown cells, return invalid
+  if (remaining_unknown == 0 || remaining_mines <= 0) {
+    return {-1, -1};
+  }
+
+  float global_probability = (float)remaining_mines / remaining_unknown;
+
+  std::pair<int, int> best_cell = {-1, -1};
+  float best_probability = 2.0f; // Start with probability > 1
+
+  const int dx[] = {-1, -1, -1, 0, 0, 1, 1, 1};
+  const int dy[] = {-1, 0, 1, -1, 1, -1, 0, 1};
+
+  for (int i = 0; i < rows; i++) {
+    for (int j = 0; j < columns; j++) {
+      if (known_map[i][j] == '?' && !is_marked[i][j]) {
+        float cell_probability = global_probability;
+
+        // Check if cell is adjacent to any visited cells
+        bool adjacent_to_number = false;
+        float local_prob_sum = 0.0f;
+        int local_constraints = 0;
+
+        for (int d = 0; d < 8; d++) {
+          int ni = i + dx[d];
+          int nj = j + dy[d];
+          if (ni >= 0 && ni < rows && nj >= 0 && nj < columns) {
+            if (known_map[ni][nj] >= '1' && known_map[ni][nj] <= '8') {
+              adjacent_to_number = true;
+
+              int number = known_map[ni][nj] - '0';
+
+              // Count unknown and marked neighbors of this number cell
+              int unknown_around = 0;
+              int marked_around = 0;
+
+              for (int dd = 0; dd < 8; dd++) {
+                int nni = ni + dx[dd];
+                int nnj = nj + dy[dd];
+                if (nni >= 0 && nni < rows && nnj >= 0 && nnj < columns) {
+                  if (known_map[nni][nnj] == '?') {
+                    unknown_around++;
+                  } else if (known_map[nni][nnj] == '@') {
+                    marked_around++;
+                  }
+                }
+              }
+
+              // Calculate local probability for this constraint
+              int remaining_mines_for_cell = number - marked_around;
+              if (remaining_mines_for_cell > 0 && unknown_around > 0) {
+                local_prob_sum += (float)remaining_mines_for_cell / unknown_around;
+                local_constraints++;
+              }
+            }
+          }
+        }
+
+        // If cell is adjacent to numbers, use average of local probabilities
+        if (adjacent_to_number && local_constraints > 0) {
+          cell_probability = local_prob_sum / local_constraints;
+        }
+
+        // Prefer cells with lower probability
+        if (cell_probability < best_probability) {
+          best_probability = cell_probability;
+          best_cell = {i, j};
+        }
+      }
+    }
+  }
+
+  if (best_cell.first != -1) {
+    return best_cell;
+  }
+
+  // Fallback to random
+  return findRandomUnknown();
+}
+
+/**
  * @brief Check if a cell should be auto-explored
  * @param r Row coordinate
  * @param c Column coordinate
@@ -330,12 +422,11 @@ void Decide() {
     return;
   }
 
-  // Step 4: Make a random guess
-  // Prefer cells with lower probability of being a mine
-  // Simple strategy: random unknown cell
-  auto random_cell = findRandomUnknown();
-  if (random_cell.first != -1) {
-    Execute(random_cell.first, random_cell.second, 0);  // Visit
+  // Step 4: Make an educated guess
+  // Use probability calculations to choose the safest cell
+  auto best_guess = findBestGuess();
+  if (best_guess.first != -1) {
+    Execute(best_guess.first, best_guess.second, 0);  // Visit
     return;
   }
 
