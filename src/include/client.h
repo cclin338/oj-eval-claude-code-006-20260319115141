@@ -64,7 +64,7 @@ void updateKnowledge() {
 
     for (int i = 0; i < rows; i++) {
       for (int j = 0; j < columns; j++) {
-        if (is_visited[i][j] && known_map[i][j] >= '0' && known_map[i][j] <= '8') {
+        if (known_map[i][j] >= '1' && known_map[i][j] <= '8') {
           int number = known_map[i][j] - '0';
 
           // Count unknown and marked neighbors
